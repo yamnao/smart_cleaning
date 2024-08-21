@@ -1,0 +1,350 @@
+#' Function to generate report containing plausibility score
+#'
+#' @param path_data Path for cluster data
+#' @return [data.frame] Clean cluster data
+#' @export
+f_calcul_and_report_plausibility_score <- function(item, information){
+  # Read nutrition data
+  ## Select all the files in the folder
+  all_files <- list.files(path = item, pattern = ".csv")
+  ## Find the cluster one
+  all_files <- all_files[grepl(pattern = 'nutrition', x=all_files)]
+  ## But one without any cleaning process
+  wanted_clean <- all_files[grepl(pattern = 'clean', x=all_files)]
+  wanted_no_clean <- base::setdiff(all_files, all_files[grepl(pattern = 'clean', x=all_files)])
+  ## If there is a cluster file - we can clean it
+  if(length(wanted_clean) != 0){
+    # Extract name of the data
+    # read the file without flagged data
+    path_data <- paste(item,'/', wanted_clean[1], sep="")
+    nutrition_data_clean <- rio::import(path_data)
+    if(nrow(nutrition_data_clean) == 0){
+      return(rbind(information, c('overall_score', NA)))
+    }
+    # read the file with flagged data
+    path_data <- paste(item,'/', wanted_no_clean[1], sep="")
+    nutrition_data <- rio::import(path_data)
+    # Calculate quality score
+    score_list <- f_calcul_quality_score(information, 
+                                         nutrition_data, 
+                                         nutrition_data_clean)
+    information <- rbind(information, c('overall_score', score_list$overall_score))
+    flagged_data <- nutrition_data |> dplyr::filter(flag_WHZ == 1 | flag_WAZ == 1 |
+                                                      flag_HAZ == 1 | flag_bio == 1) |>
+      dplyr::select(CLUSTER, TEAM, ID, WAZ, HAZ, WHZ, flag_WHZ, flag_HAZ, flag_WAZ, flag_bio)
+    generate_word_doc(item, information, score_list, flagged_data)
+    return(information)
+  }
+  return(information)
+}
+
+#' Function to generate the final overall score
+#'
+#' @param flagged_data integer number of flagged data
+#' @param overall_sex integer number of overall sex
+#' @param overall_age integer number of overall age
+#' @param dps_weight integer number of dps weight
+#' @param dps_height integer number of dps height
+#' @param dps_muac integer number of dps height
+#' @param std_weight integer number of std weight
+#' @param skew integer number of skew
+#' @param kur integer number of kurotsis
+#' @param poisson_score integer number of poisson score
+#' @return [data.frame] Clean cluster data
+f_calculate_final_overall_score <- function(flagged_data, 
+                                            overall_sex,
+                                            overall_age,
+                                            dps_weight,
+                                            dps_height,
+                                            dps_muac,
+                                            std_weight,
+                                            skew, 
+                                            kur,
+                                            poisson_score){
+  final_score <- 0
+  if(length(flagged_data) == 0){
+    flagged_data <- 0
+  }
+  if(flagged_data > 2.5 & flagged_data <= 5){
+    final_score <- final_score + 5
+  }else if(flagged_data > 5 & flagged_data <= 7.5){
+    final_score <- final_score + 10
+  }else if(flagged_data > 7.5){
+    final_score <- final_score +20
+  }
+  
+  if(overall_sex > 0.05 & overall_sex < 0.01){
+    final_score <- final_score + 2
+  }else if(overall_sex > 0.001 & overall_sex < 0.05){
+    final_score <- final_score + 4
+  }else if(overall_sex <= 0.001){
+    final_score <- final_score + 10
+  }
+  
+  
+  if(overall_age > 0.05 & overall_age < 0.1){
+    final_score <- final_score + 2
+  }else if(overall_age > 0.001 & overall_age <= 0.05){
+    final_score <- final_score + 4
+  }else if(overall_age <= 0.001){
+    final_score <- final_score + 10
+  }
+  
+  if(dps_weight >= 8 & dps_weight <= 12){
+    final_score <- final_score + 2
+  }else if(dps_weight >= 13 & dps_weight <= 20){
+    final_score <- final_score + 4
+  }else if(dps_weight > 20){
+    final_score <- final_score + 10
+  }
+  
+  if(dps_height >= 8 & dps_height <= 12){
+    final_score <- final_score + 2
+  }else if(dps_height >= 13 & dps_height <= 20){
+    final_score <- final_score + 4
+  }else if(dps_height > 20){
+    final_score <- final_score + 10
+  }
+  
+  if(dps_muac >= 8 & dps_muac <= 12){
+    final_score <- final_score + 2
+  }else if(dps_muac >= 13 & dps_muac <= 20){
+    final_score <- final_score + 4
+  }else if(dps_muac > 20){
+    final_score <- final_score + 10
+  }
+  if(is.na(std_weight)){return(0)}
+  if(dplyr::between(std_weight, 1.1, 1.15) | dplyr::between(std_weight, 0.85, 0.9)){
+    final_score <- final_score + 5
+  }else if(dplyr::between(std_weight, 1.15, 1.20) | dplyr::between(std_weight, 0.80, 0.85)){
+    final_score <- final_score + 10
+  }else if(std_weight >= 1.2 | std_weight <=0.80){
+    final_score <- final_score + 20
+  }
+  
+  if(dplyr::between(skew, -0.4, -0.2) | dplyr::between(skew, 0.2, 0.4)){
+    final_score <- final_score + 1
+  }else if(dplyr::between(skew, -0.6, -0.4) | dplyr::between(skew, 0.4, 0.6)){
+    final_score <- final_score + 3
+  }else if((skew < -0.6) | (skew > 0.6)){
+    final_score <- final_score + 5
+  }
+  
+  if(dplyr::between(kur, -0.4, -0.2) | dplyr::between(kur, 0.2, 0.4)){
+    final_score <- final_score + 1
+  }else if(dplyr::between(kur, -0.6, -0.4) | dplyr::between(kur, 0.4, 0.6)){
+    final_score <- final_score + 3
+  }else if((kur < -0.6) | (kur > 0.6)){
+    final_score <- final_score + 5
+  }
+  
+  if(poisson_score > 0.01 & poisson_score < 0.05){
+    final_score <- final_score + 1
+  }else if(poisson_score >= 0.001 & poisson_score < 0.01){
+    final_score <- final_score + 3
+  }else if(poisson_score <= 0.001){
+    final_score <- final_score + 5
+  }
+  return(final_score)
+}
+#' Function to calculate plausibility score
+#'
+#' @param path_data Path for cluster data
+#' @return [data.frame] Clean cluster data
+#' @export
+f_calcul_quality_score <- function(information, nutrition_data, 
+                                   nutrition_data_clean){
+  flagged_data <- round(as.numeric(information[information$type_info == 'flag_whz',]$values), 2)
+  
+  report_gam <- sum(ifelse(nutrition_data$WHZ < -2, 1, 0))/length(nutrition_data$WHZ)
+  report_sam <- sum(ifelse(nutrition_data$WHZ < -3, 1, 0))/length(nutrition_data$WHZ)
+  
+  nutrition_data$SEX <- ifelse(nutrition_data$SEX == 'm', 1, 0)
+  overall_sex <- ifelse(all(is.na(nutrition_data$SEX)), yes=0, 
+                        no=round(chisq.test(c(sum(nutrition_data$SEX), length(nutrition_data$SEX)-sum(nutrition_data$SEX)))$p.value, 2))  
+  
+  df <- nutrition_data |>
+    dplyr::mutate(MONTHS = as.numeric(MONTHS)) |>
+    dplyr::filter(!is.na(MONTHS)) |>
+    dplyr::filter(MONTHS >= 6 & MONTHS < 60) |>
+    dplyr::summarise(age_ratio = nipnTK::ageRatioTest(MONTHS, ratio = 0.85)[3],
+                     age_ratio = round(as.numeric(age_ratio),2),
+                     age_ratio.pvalue = round(as.numeric(nipnTK::ageRatioTest(MONTHS, ratio = 0.85)[7]),4),)
+  overall_age <- df$age_ratio.pvalue
+  
+  # Calculate Standard deviation WHZ
+  std_weight <- round(sd(nutrition_data_clean$WHZ),2)
+  
+  #Calculate Skewness
+  skew <- round(nipnTK::skewKurt(nutrition_data[nutrition_data$flag_WHZ ==0,]$WHZ)$s, 3)
+  # Calculate Kurtosis
+  kur <- round(nipnTK::skewKurt(nutrition_data[nutrition_data$flag_WHZ ==0,]$WHZ)$k, 3)
+  
+  # Calculate digit preference
+  dps_height <- round(nipnTK::digitPreference(nutrition_data$HEIGHT)$dps)
+  dps_weight <- round(nipnTK::digitPreference(nutrition_data$WEIGHT)$dps)
+  dps_muac <- ifelse(all(is.na(nutrition_data$MUAC)), yes=0, no=round( nipnTK::digitPreference(as.numeric(nutrition_data$MUAC), digits = 0)$dps))
+  
+  # Calculate poisson on WHZ-2
+  count <- c()
+  for(var in unique(nutrition_data_clean$CLUSTER)){
+    count <- append(count, sum(ifelse(nutrition_data_clean$CLUSTER == var & nutrition_data_clean$WHZ < -2 & nutrition_data_clean$flag_WHZ == 0, 1, 0)))
+  }
+  count[is.na(count)] <- 0
+  poisson_score <- ifelse(length(count) ==1,yes=1, no=round(chisq.test(as.table(count))$p.value,3))
+  
+  #Calculate final score
+  final_score <- f_calculate_final_overall_score(flagged_data = flagged_data, 
+                                                 overall_sex = overall_sex,
+                                                 overall_age = overall_age,
+                                                 dps_weight = dps_weight,
+                                                 dps_height = dps_height,
+                                                 dps_muac = dps_muac,
+                                                 std_weight = std_weight,
+                                                 skew = skew, 
+                                                 kur =kur,
+                                                 poisson_score = poisson_score)
+  
+  # Percent of data in nutrition without exact birthday
+  percent_no_exact_birth <- round(nrow(nutrition_data_clean[nutrition_data_clean$BIRTHDAT == "",])/nrow(nutrition_data_clean)*100, 0)
+  nb_child <- nrow(nutrition_data_clean)
+  
+  return(list(
+    overall_score = final_score, 
+    flagged_data =flagged_data,
+    overall_sex = overall_sex, 
+    overall_age = overall_age,
+    dps_height = dps_height, 
+    dps_weight = dps_weight, 
+    dps_muac = dps_muac, 
+    std_weight = std_weight, 
+    skew = skew, 
+    kur =kur,
+    poisson_score =poisson_score,
+    report_gam = report_gam, 
+    report_sam = report_sam, 
+    percent_no_exact_birth = percent_no_exact_birth,
+    nb_child = nb_child
+    )
+    )
+  
+}
+
+#' Function to chage the style of table in word document
+#'
+#' @param doc Word document
+#' @param table Dataframe to change
+#' @return [office doc] return word doc
+f_modify_table_style <- function(doc, table){
+  ft <- flextable::flextable(table)
+  ft <- flextable::set_header_labels(ft,values=gsub('.',' ',names(table),fixed=T))
+  ft <- flextable::set_table_properties(ft,'autofit',width=1) # whole page width, 1 = 100%
+  ft <- flextable::fontsize(ft,size=10, part='all')
+  doc <- flextable::body_add_flextable(doc, ft)
+  return(doc)
+}
+
+#' Function to modify the style of the overall score list
+#'
+#' @param score_list List of scores
+#' @return [data.frame] Score list in the right dataframe
+f_generate_score_table_word <- function(score_list){
+  row_1 <- c('Flagged Data', 'Incl', 
+             '0-2.5 - Score 0', 
+             '>2.5-5.0 - Score 5', 
+             '>5.0-7.5 - Score 10', 
+             '>7.5 - Score 20',
+             score_list$flagged_data)
+  row_2 <- c('Overall Sex ratio', 'Incl', 
+             '>0.1 - Score 0', 
+             '>0.05 - Score 2', 
+             '>0.001 - Score 4', 
+             '<=0.001- Score 10',
+             score_list$overall_sex)
+  row_3 <- c('Age ratio(6-29 vs 30-59)', 'Incl', 
+             '>0.1 - Score 0', 
+             '>0.05 - Score 2', 
+             '>0.001 - Score 4', 
+             '<=0.001- Score 10',
+             score_list$overall_age)
+  row_4 <- c('Dig pref score - weight', 'Incl', 
+             '0-7 - Score 0', 
+             '8-12 - Score 2', 
+             '13-20 - Score 4', 
+             '>20- Score 10',
+             score_list$dps_weight)
+  row_5 <- c('Dig pref score - height', 'Incl', 
+             '0-7 - Score 0', 
+             '8-12 - Score 2', 
+             '13-20 - Score 4', 
+             '>20- Score 10',
+             score_list$dps_height)
+  row_6 <- c('Dig pref score - MUAC', 'Incl', 
+             '0-7 - Score 0', 
+             '8-12 - Score 2', 
+             '13-20 - Score 4', 
+             '>20- Score 10',
+             score_list$dps_muac)
+  row_7 <- c('Standard Dev WHZ', 'Excl', 
+             '<1.1 & >0.9 - Score 0', 
+             '<1.15 & >0.85 - Score 5', 
+             '<1.20 & >0.80 - Score 10', 
+             '>=1.20 & <=0.80 - Score 20',
+             score_list$std_weight)
+  row_8 <- c('Skewness  WHZ', 'Excl', 
+             '<+-0.2 - Score 0', 
+             '<+-0.4 - Score 1', 
+             '<+-0.6 - Score 3', 
+             '>+-0.6 - Score 5',
+             score_list$skew)
+  row_9 <- c('Kurtosis  WHZ', 'Excl', 
+             '<+-0.2 - Score 0', 
+             '<+-0.4 - Score 1', 
+             '<+-0.6 - Score 3', 
+             '>+-0.6 - Score 5',
+             score_list$kur)
+  row_10 <- c('Poisson dist WHZ-2', 'Excl', 
+             '>0.05 - Score 0', 
+             '>0.01 - Score 1', 
+             '>0.001 - Score 3', 
+             '<=0.001 - Score 5',
+             score_list$poisson_score)
+  row_11 <- c('Overall Score', '', 
+              '0-9',
+              '10-14',
+              '15-24',
+              '>25',
+              score_list$overall_score)
+  score_list_table <- rbind(row_1, row_2)
+  score_list_table <- rbind(score_list_table, row_3)
+  score_list_table <- rbind(score_list_table, row_4)
+  score_list_table <- rbind(score_list_table, row_5)
+  score_list_table <- rbind(score_list_table, row_6)
+  score_list_table <- rbind(score_list_table, row_7)
+  score_list_table <- rbind(score_list_table, row_8)
+  score_list_table <- rbind(score_list_table, row_9)
+  score_list_table <- rbind(score_list_table, row_10)
+  score_list_table <- rbind(score_list_table, row_11)
+  score_list_table <- data.frame(score_list_table)
+  colnames(score_list_table) <- c('Criteria', 'Flags', 'Excel.', 
+                                  'Good', 'Accept', 'Problematic', 'Result')
+  rownames(score_list_table) <- NULL
+  return(score_list_table)
+}
+
+#' Function to qulify the type of overall score
+#'
+#' @param overall_score integer of the overall score
+#' @return [character] type of overall score
+f_type_score <- function(overall_score){
+  if(overall_score <= 9){
+    return('excellent')
+  }else if(overall_score > 9 & overall_score <= 14){
+    return('average')
+  }else if(overall_score > 14 & overall_score <= 24){
+    return('acceptable')
+  }else{
+    return('problematic')
+  }
+}
+

@@ -1,0 +1,512 @@
+ft <- flextable::set_table_properties(ft,'autofit',width=1) # whole page width, 1 = 100%
+ft <- flextable::fontsize(ft,size=10, part='all')
+doc <- flextable::body_add_flextable(doc, ft)
+return(doc)
+}
+#' Function to modify the style of the overall score list
+#'
+#' @param score_list List of scores
+#' @return [data.frame] Score list in the right dataframe
+f_generate_score_table_word <- function(score_list){
+row_1 <- c('Flagged Data', 'Incl',
+'0-2.5 - Score 0',
+'>2.5-5.0 - Score 5',
+'>5.0-7.5 - Score 10',
+'>7.5 - Score 20',
+score_list$flagged_data)
+row_2 <- c('Overall Sex ratio', 'Incl',
+'>0.1 - Score 0',
+'>0.05 - Score 2',
+'>0.001 - Score 4',
+'<=0.001- Score 10',
+score_list$overall_sex)
+row_3 <- c('Age ratio(6-29 vs 30-59)', 'Incl',
+'>0.1 - Score 0',
+'>0.05 - Score 2',
+'>0.001 - Score 4',
+'<=0.001- Score 10',
+score_list$overall_age)
+row_4 <- c('Dig pref score - weight', 'Incl',
+'0-7 - Score 0',
+'8-12 - Score 2',
+'13-20 - Score 4',
+'>20- Score 10',
+score_list$dps_weight)
+row_5 <- c('Dig pref score - height', 'Incl',
+'0-7 - Score 0',
+'8-12 - Score 2',
+'13-20 - Score 4',
+'>20- Score 10',
+score_list$dps_height)
+row_6 <- c('Dig pref score - MUAC', 'Incl',
+'0-7 - Score 0',
+'8-12 - Score 2',
+'13-20 - Score 4',
+'>20- Score 10',
+score_list$dps_muac)
+row_7 <- c('Standard Dev WHZ', 'Excl',
+'<1.1 & >0.9 - Score 0',
+'<1.15 & >0.85 - Score 5',
+'<1.20 & >0.80 - Score 10',
+'>=1.20 & <=0.80 - Score 20',
+score_list$std_weight)
+row_8 <- c('Skewness  WHZ', 'Excl',
+'<+-0.2 - Score 0',
+'<+-0.4 - Score 1',
+'<+-0.6 - Score 3',
+'>+-0.6 - Score 5',
+score_list$skew)
+row_9 <- c('Kurtosis  WHZ', 'Excl',
+'<+-0.2 - Score 0',
+'<+-0.4 - Score 1',
+'<+-0.6 - Score 3',
+'>+-0.6 - Score 5',
+score_list$kur)
+row_10 <- c('Poisson dist WHZ-2', 'Excl',
+'>0.05 - Score 0',
+'>0.01 - Score 1',
+'>0.001 - Score 3',
+'<=0.001 - Score 5',
+score_list$poisson_score)
+row_11 <- c('Overall Score', '',
+'0-9',
+'10-14',
+'15-24',
+'>25',
+score_list$overall_score)
+score_list_table <- rbind(row_1, row_2)
+score_list_table <- rbind(score_list_table, row_3)
+score_list_table <- rbind(score_list_table, row_4)
+score_list_table <- rbind(score_list_table, row_5)
+score_list_table <- rbind(score_list_table, row_6)
+score_list_table <- rbind(score_list_table, row_7)
+score_list_table <- rbind(score_list_table, row_8)
+score_list_table <- rbind(score_list_table, row_9)
+score_list_table <- rbind(score_list_table, row_10)
+score_list_table <- rbind(score_list_table, row_11)
+score_list_table <- data.frame(score_list_table)
+colnames(score_list_table) <- c('Criteria', 'Flags', 'Excel.',
+'Good', 'Accept', 'Problematic', 'Result')
+rownames(score_list_table) <- NULL
+return(score_list_table)
+}
+#' Function to qulify the type of overall score
+#'
+#' @param overall_score integer of the overall score
+#' @return [character] type of overall score
+f_type_score <- function(overall_score){
+if(overall_score <= 9){
+return('excellent')
+}else if(overall_score > 9 & overall_score <= 14){
+return('average')
+}else if(overall_score > 14 & overall_score <= 24){
+return('acceptable')
+}else{
+return('problematic')
+}
+}
+#' Function to generate word document with plausibility score
+#'
+#' @param path_data Path for cluster data
+#' @return [data.frame] Clean cluster data
+#' @export
+generate_word_doc<- function(item, information, score_list, flagged_data){
+# Create the word document
+doc <- officer::read_docx()
+# Generate the title
+doc <- doc |>
+officer::body_add_par(paste("Plausibility check for: ", information[information$type_info == 'old_name',]$values, sep=""), style = "centered") |>
+officer::body_add_par(" ", style='Normal')
+doc <- doc |>
+officer::body_add_par("1. Calculation of Overall Score", style = "heading 1") |>
+officer::body_add_par(" ", style = "Normal")
+score_list_table <- f_generate_score_table_word(score_list)
+doc <- f_modify_table_style(doc, score_list_table)
+doc <- doc |>
+officer::body_add_par(paste("The overall score of this survey is ",
+100-score_list$overall_score,
+'%, this is ', f_type_score(score_list$overall_score), sep=""), style = "Normal") |>
+officer::body_add_par(" ", style = "Normal")|>
+officer::body_add_par(paste("Percentage of children with no exact birthday: ",
+score_list$percent_no_exact_birth, sep=""), style = "Normal") |>
+officer::body_add_par(" ", style = "Normal")
+doc <- doc |>
+officer::body_add_par("2. Flagged Data", style = "heading 1") |>
+officer::body_add_par(" ", style = "Normal")
+doc <- f_modify_table_style(doc, flagged_data)
+doc <- doc |>
+officer::body_add_par("3. Quality Visualisation", style = "heading 1") |>
+officer::body_add_par(" ", style = "Normal")
+doc <- doc |>
+officer::body_add_par("Gaussiant Curve Before Exclusion (Without Cleaning)", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'with',
+type_of_plot = 'gaussian_curve_WHZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'with',
+type_of_plot = 'gaussian_curve_HAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'with',
+type_of_plot = 'gaussian_curve_WAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+doc <- doc |>
+officer::body_add_par("Gaussiant Curve After Exclusion (Cleaning)", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_WHZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_HAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_WAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+doc <- doc |>
+officer::body_add_par("Gaussiant Curve After Exclusion and Sex", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_WHZ',
+group = 'Sex')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_HAZ',
+group = 'Sex')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_WAZ',
+group = 'Sex')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+doc <- doc |>
+officer::body_add_par("MUAC Plot", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_cumulative_curve(folder_name = item)
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+print(doc, target = paste(item, '/', "plausibility_check_", strsplit(information[information$type_info == 'old_name',]$values, split = ".as")[[1]][1],".docx", sep=""))
+}
+# Calculate quality score
+score_list <- f_calcul_quality_score(information,
+nutrition_data,
+nutrition_data_clean)
+nutrition_data <- rio::import(path_data)
+# Calculate quality score
+score_list <- f_calcul_quality_score(information,
+nutrition_data,
+nutrition_data_clean)
+nutrition_data_clean <- rio::import(path_data)
+if(nrow(nutrition_data_clean) == 0){
+return(rbind(information, c('overall_score', NA)))
+}
+# read the file with flagged data
+path_data <- paste(item,'/', wanted_no_clean[1], sep="")
+nutrition_data <- rio::import(path_data)
+# Calculate quality score
+score_list <- f_calcul_quality_score(information,
+nutrition_data,
+nutrition_data_clean)
+information
+flagged_data <- round(as.numeric(information[information$type_info == 'flag_whz',]$values), 2)
+report_gam <- sum(ifelse(nutrition_data$WHZ < -2, 1, 0))/length(nutrition_data$WHZ)
+report_sam <- sum(ifelse(nutrition_data$WHZ < -3, 1, 0))/length(nutrition_data$WHZ)
+nutrition_data$SEX <- ifelse(nutrition_data$SEX == 'm', 1, 0)
+overall_sex <- ifelse(all(is.na(nutrition_data$SEX)), yes=0,
+no=round(chisq.test(c(sum(nutrition_data$SEX), length(nutrition_data$SEX)-sum(nutrition_data$SEX)))$p.value, 2))
+df <- nutrition_data |>
+dplyr::mutate(MONTHS = as.numeric(MONTHS)) |>
+dplyr::filter(!is.na(MONTHS)) |>
+dplyr::filter(MONTHS >= 6 & MONTHS < 60) |>
+dplyr::summarise(age_ratio = nipnTK::ageRatioTest(MONTHS, ratio = 0.85)[3],
+age_ratio = round(as.numeric(age_ratio),2),
+age_ratio.pvalue = round(as.numeric(nipnTK::ageRatioTest(MONTHS, ratio = 0.85)[7]),4),)
+nutrition_data |>
+dplyr::mutate(MONTHS = as.numeric(MONTHS)) |>
+dplyr::filter(!is.na(MONTHS)) |>
+dplyr::filter(MONTHS >= 6 & MONTHS < 60)
+nutrition_data |>
+dplyr::mutate(MONTHS = as.numeric(MONTHS)) |>
+dplyr::filter(!is.na(MONTHS)) |>
+dplyr::filter(MONTHS >= 6 & MONTHS < 60) |>
+dplyr::summarise(age_ratio = nipnTK::ageRatioTest(MONTHS, ratio = 0.85)[3],
+age_ratio = round(as.numeric(age_ratio),2),
+age_ratio.pvalue = round(as.numeric(nipnTK::ageRatioTest(MONTHS, ratio = 0.85)[7]),4),)
+nutrition_data |>
+dplyr::mutate(MONTHS = as.numeric(MONTHS)) |>
+dplyr::filter(!is.na(MONTHS)) |>
+dplyr::filter(MONTHS >= 6 & MONTHS < 60) |>
+dplyr::summarise(age_ratio = nipnTK::ageRatioTest(MONTHS, ratio = 0.85)[3])
+View(nutrition_data |>
+dplyr::mutate(MONTHS = as.numeric(MONTHS)) |>
+dplyr::filter(!is.na(MONTHS)) |>
+dplyr::filter(MONTHS >= 6 & MONTHS < 60))
+items
+item <- items[3]
+# Clean information in the log_file
+information <- f_add_clean_infos(item, log_file)
+# Clean and save cluster data
+f_clean_and_export_cluster_data(item, information)
+# Clean and save mortality data
+f_clean_and_export_mortality_data(item, information)
+# Clean and save nutrition data
+information <- f_clean_and_export_nutritition_data(item, information, cleaning_criteria)
+information <- information[[1]]
+# Generate plausibility score and report
+information <- f_calcul_and_report_plausibility_score(item, information)
+# Read nutrition data
+## Select all the files in the folder
+all_files <- list.files(path = item, pattern = ".csv")
+## Find the cluster one
+all_files <- all_files[grepl(pattern = 'nutrition', x=all_files)]
+## But one without any cleaning process
+wanted_clean <- all_files[grepl(pattern = 'clean', x=all_files)]
+wanted_no_clean <- base::setdiff(all_files, all_files[grepl(pattern = 'clean', x=all_files)])
+## If there is a cluster file - we can clean it
+if(length(wanted_clean) != 0){
+# Extract name of the data
+# read the file without flagged data
+path_data <- paste(item,'/', wanted_clean[1], sep="")
+nutrition_data_clean <- rio::import(path_data)
+if(nrow(nutrition_data_clean) == 0){
+return(rbind(information, c('overall_score', NA)))
+}
+# read the file with flagged data
+path_data <- paste(item,'/', wanted_no_clean[1], sep="")
+nutrition_data <- rio::import(path_data)
+# Calculate quality score
+score_list <- f_calcul_quality_score(information,
+nutrition_data,
+nutrition_data_clean)
+information <- rbind(information, c('overall_score', score_list$overall_score))
+flagged_data <- nutrition_data |> dplyr::filter(flag_WHZ == 1 | flag_WAZ == 1 |
+flag_HAZ == 1 | flag_bio == 1) |>
+dplyr::select(CLUSTER, TEAM, ID, WAZ, HAZ, WHZ, flag_WHZ, flag_HAZ, flag_WAZ, flag_bio)
+generate_word_doc(item, information, score_list, flagged_data)
+return(information)
+}
+# Create the word document
+doc <- officer::read_docx()
+# Generate the title
+doc <- doc |>
+officer::body_add_par(paste("Plausibility check for: ", information[information$type_info == 'old_name',]$values, sep=""), style = "centered") |>
+officer::body_add_par(" ", style='Normal')
+doc <- doc |>
+officer::body_add_par("1. Calculation of Overall Score", style = "heading 1") |>
+officer::body_add_par(" ", style = "Normal")
+score_list_table <- f_generate_score_table_word(score_list)
+doc <- f_modify_table_style(doc, score_list_table)
+doc <- doc |>
+officer::body_add_par(paste("The overall score of this survey is ",
+100-score_list$overall_score,
+'%, this is ', f_type_score(score_list$overall_score), sep=""), style = "Normal") |>
+officer::body_add_par(" ", style = "Normal")|>
+officer::body_add_par(paste("Percentage of children with no exact birthday: ",
+score_list$percent_no_exact_birth, sep=""), style = "Normal") |>
+officer::body_add_par(" ", style = "Normal")
+doc <- doc |>
+officer::body_add_par("2. Flagged Data", style = "heading 1") |>
+officer::body_add_par(" ", style = "Normal")
+doc <- f_modify_table_style(doc, flagged_data)
+doc <- doc |>
+officer::body_add_par("3. Quality Visualisation", style = "heading 1") |>
+officer::body_add_par(" ", style = "Normal")
+doc <- doc |>
+officer::body_add_par("Gaussiant Curve Before Exclusion (Without Cleaning)", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'with',
+type_of_plot = 'gaussian_curve_WHZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'with',
+type_of_plot = 'gaussian_curve_HAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'with',
+type_of_plot = 'gaussian_curve_WAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+doc <- doc |>
+officer::body_add_par("Gaussiant Curve After Exclusion (Cleaning)", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_WHZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_HAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_WAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+doc <- doc |>
+officer::body_add_par("Gaussiant Curve After Exclusion and Sex", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_WHZ',
+group = 'Sex')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_HAZ',
+group = 'SEX')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+library(smartcleaning)
+doc <- doc |>
+officer::body_add_par("MUAC Plot", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_cumulative_curve(nutrition_file = item)
+item
+doc <- doc |>
+officer::body_add_par("MUAC Plot", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'cum_muac',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'cum_muac',
+group = 'All')
+doc <- officer::read_docx()
+# Generate the title
+doc <- doc |>
+officer::body_add_par(paste("Plausibility check for: ", information[information$type_info == 'old_name',]$values, sep=""), style = "centered") |>
+officer::body_add_par(" ", style='Normal')
+doc <- doc |>
+officer::body_add_par("1. Calculation of Overall Score", style = "heading 1") |>
+officer::body_add_par(" ", style = "Normal")
+score_list_table <- f_generate_score_table_word(score_list)
+doc <- f_modify_table_style(doc, score_list_table)
+doc <- doc |>
+officer::body_add_par(paste("The overall score of this survey is ",
+100-score_list$overall_score,
+'%, this is ', f_type_score(score_list$overall_score), sep=""), style = "Normal") |>
+officer::body_add_par(" ", style = "Normal")|>
+officer::body_add_par(paste("Percentage of children with no exact birthday: ",
+score_list$percent_no_exact_birth, sep=""), style = "Normal") |>
+officer::body_add_par(" ", style = "Normal")
+doc <- doc |>
+officer::body_add_par("2. Flagged Data", style = "heading 1") |>
+officer::body_add_par(" ", style = "Normal")
+doc <- f_modify_table_style(doc, flagged_data)
+doc <- doc |>
+officer::body_add_par("3. Quality Visualisation", style = "heading 1") |>
+officer::body_add_par(" ", style = "Normal")
+doc <- doc |>
+officer::body_add_par("Gaussiant Curve Before Exclusion (Without Cleaning)", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'with',
+type_of_plot = 'gaussian_curve_WHZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'with',
+type_of_plot = 'gaussian_curve_HAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'with',
+type_of_plot = 'gaussian_curve_WAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+doc <- doc |>
+officer::body_add_par("Gaussiant Curve After Exclusion (Cleaning)", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_WHZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_HAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_WAZ',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+doc <- doc |>
+officer::body_add_par("Gaussiant Curve After Exclusion and Sex", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_WHZ',
+group = 'SEX')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_HAZ',
+group = 'SEX')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'gaussian_curve_WAZ',
+group = 'SEX')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+doc <- doc |>
+officer::body_add_par("MUAC Plot", style = "heading 3") |>
+officer::body_add_par(" ", style = "Normal")
+plot <- plot_anthro(folder_name = item,
+exclusion = 'without',
+type_of_plot = 'cum_muac',
+group = 'All')
+doc <- officer::body_add_gg(doc, value = plot ,
+style = "centered")
+doc
+library(smartcleaning)
+library(smartcleaning)
+install.packages('smartextract')
+library(smartcleaning)
